@@ -97,6 +97,91 @@ pub async fn create_user(
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub email: String,
+    pub old_password: String,
+    pub new_password: String,
+}
+
+pub async fn change_password(
+    State(pool): State<Arc<Pool<Postgres>>>,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> Json<ApiResponse> {
+    if !authenticate_user(&pool, &payload.email, &payload.old_password).await {
+        return Json(ApiResponse {
+            status: "error".to_string(),
+            message: "Invalid email or password".to_string(),
+        });
+    }
+
+    let password_hash = hash_password(&payload.new_password);
+
+    let query_result = sqlx::query("UPDATE users SET password_hash = $1 WHERE email = $2")
+        .bind(password_hash)
+        .bind(payload.email)
+        .execute(&*pool)
+        .await;
+
+    match query_result {
+        Ok(result) => {
+            if result.rows_affected() == 0 {
+                Json(ApiResponse {
+                    status: "error".to_string(),
+                    message: "No user found with this email".to_string(),
+                })
+            } else {
+                Json(ApiResponse {
+                    status: "success".to_string(),
+                    message: "Password changed successfully".to_string(),
+                })
+            }
+        }
+        Err(e) => {
+            eprintln!("Database error: {:?}", e);
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: format!("Failed to change password: {}", e),
+            })
+        }
+    }
+}
+
+async fn authenticate_user(pool: &Pool<Postgres>, email: &str, password: &str) -> bool {
+    let password_hash = hash_password(password);
+    let result = sqlx::query("SELECT 1 FROM users WHERE email = $1 AND password_hash = $2")
+        .bind(email)
+        .bind(password_hash)
+        .fetch_optional(pool)
+        .await;
+
+    match result {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(e) => {
+            eprintln!("Database error: {:?}", e);
+            false
+        }
+    }
+}
+
+pub async fn login_user(
+    State(pool): State<Arc<Pool<Postgres>>>,
+    Json(payload): Json<CreateUserRequest>,
+) -> Json<ApiResponse> {
+    if authenticate_user(&pool, &payload.email, &payload.password).await {
+        Json(ApiResponse {
+            status: "success".to_string(),
+            message: "Login successful".to_string(),
+        })
+    } else {
+        Json(ApiResponse {
+            status: "error".to_string(),
+            message: "Invalid email or password".to_string(),
+        })
+    }
+}
+
 fn hash_password(password: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());

@@ -5,7 +5,7 @@ use axum::{
 use std::net::SocketAddr;
 use std::sync::Arc;
 mod user_operations;
-use user_operations::{connect_to_database, create_user};
+use user_operations::{change_password, connect_to_database, create_user, login_user};
 
 #[tokio::main]
 async fn main() {
@@ -18,6 +18,8 @@ async fn main() {
         .route("/", get(hello_world))
         .route("/status", get(|| async { "Status: OK" }))
         .route("/create_user", post(create_user))
+        .route("/change_password", post(change_password))
+        .route("/login", post(login_user))
         .with_state(shared_state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
