@@ -6,6 +6,7 @@ HTTP API Documentation for frontend development
 `POST /create_user`
 `POST /change_password`
 `POST /login`
+`POST /delete_user`
 
 
 ### Parameters
@@ -22,6 +23,10 @@ All data is passed via JSON in the request body.
 - `new_password`: string, required
 
 #### /login
+- `email`: string, required
+- `password`: string, required
+
+#### /delete_user
 - `email`: string, required
 - `password`: string, required
 

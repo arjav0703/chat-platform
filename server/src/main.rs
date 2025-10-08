@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 mod user_operations;
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
-use user_operations::{change_password, create_user, login_user};
+use user_operations::{change_password, create_user, delete_user, login_user};
 
 #[tokio::main]
 async fn main() {
@@ -21,6 +21,7 @@ async fn main() {
         .route("/create_user", post(create_user))
         .route("/change_password", post(change_password))
         .route("/login", post(login_user))
+        .route("/delete_user", post(delete_user))
         .with_state(shared_state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
