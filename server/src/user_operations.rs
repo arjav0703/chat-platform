@@ -45,11 +45,34 @@ pub async fn connect_to_database() -> Pool<Postgres> {
     pool
 }
 
+async fn check_user_exists(pool: &Pool<Postgres>, email: &str) -> bool {
+    let result = sqlx::query("SELECT 1 FROM users WHERE email = $1")
+        .bind(email)
+        .fetch_optional(pool)
+        .await;
+
+    match result {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(e) => {
+            eprintln!("Database error: {:?}", e);
+            false
+        }
+    }
+}
+
 pub async fn create_user(
     State(pool): State<Arc<Pool<Postgres>>>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Json<ApiResponse> {
     let password_hash = hash_password(&payload.password);
+
+    if check_user_exists(&pool, &payload.email).await {
+        return Json(ApiResponse {
+            status: "error".to_string(),
+            message: "User with this email already exists".to_string(),
+        });
+    }
 
     let query_result =
         sqlx::query("INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3)")
