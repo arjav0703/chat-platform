@@ -1,7 +1,7 @@
 use axum::extract::{Json, State};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize)]
@@ -15,34 +15,6 @@ pub struct CreateUserRequest {
 pub struct ApiResponse {
     pub status: String,
     pub message: String,
-}
-
-pub async fn connect_to_database() -> Pool<Postgres> {
-    println!("Connecting to the database...");
-
-    let db_url = "postgres://arjav:arjav@localhost/user_db";
-    dbg!(&db_url);
-
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(db_url)
-        .await
-        .expect("Failed to create pool.");
-
-    let _ = sqlx::query(
-        "CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            email VARCHAR(100) NOT NULL UNIQUE,
-            password_hash VARCHAR(256) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-    )
-    .execute(&pool)
-    .await;
-
-    println!("Connected to the database.");
-    pool
 }
 
 async fn check_user_exists(pool: &Pool<Postgres>, email: &str) -> bool {

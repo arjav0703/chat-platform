@@ -5,7 +5,8 @@ use axum::{
 use std::net::SocketAddr;
 use std::sync::Arc;
 mod user_operations;
-use user_operations::{change_password, connect_to_database, create_user, login_user};
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use user_operations::{change_password, create_user, login_user};
 
 #[tokio::main]
 async fn main() {
@@ -32,4 +33,32 @@ async fn main() {
 
 async fn hello_world() -> &'static str {
     "Hello, World!"
+}
+
+async fn connect_to_database() -> Pool<Postgres> {
+    println!("Connecting to the database...");
+
+    let db_url = "postgres://arjav:arjav@localhost/user_db";
+    dbg!(&db_url);
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(db_url)
+        .await
+        .expect("Failed to create pool.");
+
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(100) NOT NULL UNIQUE,
+            password_hash VARCHAR(256) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(&pool)
+    .await;
+
+    println!("Connected to the database.");
+    pool
 }
