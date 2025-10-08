@@ -121,6 +121,9 @@ pub async fn change_password(
 
 async fn authenticate_user(pool: &Pool<Postgres>, email: &str, password: &str) -> bool {
     let password_hash = hash_password(password);
+    if !check_user_exists(pool, email).await {
+        return false;
+    }
     let result = sqlx::query("SELECT 1 FROM users WHERE email = $1 AND password_hash = $2")
         .bind(email)
         .bind(password_hash)
@@ -133,6 +136,46 @@ async fn authenticate_user(pool: &Pool<Postgres>, email: &str, password: &str) -
         Err(e) => {
             eprintln!("Database error: {:?}", e);
             false
+        }
+    }
+}
+
+pub async fn delete_user(
+    State(pool): State<Arc<Pool<Postgres>>>,
+    Json(payload): Json<CreateUserRequest>,
+) -> Json<ApiResponse> {
+    if !authenticate_user(&pool, &payload.email, &payload.password).await {
+        return Json(ApiResponse {
+            status: "error".to_string(),
+            message: "Invalid email or password".to_string(),
+        });
+    }
+
+    let query_result = sqlx::query("DELETE FROM users WHERE email = $1")
+        .bind(payload.email)
+        .execute(&*pool)
+        .await;
+
+    match query_result {
+        Ok(result) => {
+            if result.rows_affected() == 0 {
+                Json(ApiResponse {
+                    status: "error".to_string(),
+                    message: "No user found with this email".to_string(),
+                })
+            } else {
+                Json(ApiResponse {
+                    status: "success".to_string(),
+                    message: "User deleted successfully".to_string(),
+                })
+            }
+        }
+        Err(e) => {
+            eprintln!("Database error: {:?}", e);
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: format!("Failed to delete user: {}", e),
+            })
         }
     }
 }
