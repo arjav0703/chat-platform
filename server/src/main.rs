@@ -59,6 +59,17 @@ async fn connect_to_database() -> Pool<Postgres> {
     .execute(&pool)
     .await;
 
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS messages(
+            id SERIAL PRIMARY KEY,
+            user_id INT REFERENCES users(id),
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(&pool)
+    .await;
+
     println!("Connected to the database.");
     pool
 }
