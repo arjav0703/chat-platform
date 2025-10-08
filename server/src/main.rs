@@ -2,11 +2,14 @@ use axum::{
     Router,
     routing::{get, post},
 };
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use std::net::SocketAddr;
 use std::sync::Arc;
+
 mod user_operations;
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use user_operations::{change_password, create_user, delete_user, login_user};
+
+mod message_operations;
 
 #[tokio::main]
 async fn main() {
