@@ -201,6 +201,10 @@ function App() {
       insertRecord(client, 'my_key', 'my_value');
       const value = await getRecord(client, 'my_key');
       console.log('Retrieved value from Stronghold:', value);
+
+      insertRecord(client, 'email', email);
+      insertRecord(client, 'password', password);
+
     }
 
     setup_stronghold();
