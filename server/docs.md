@@ -7,6 +7,7 @@ HTTP API Documentation for frontend development
 `POST /change_password`
 `POST /login`
 `POST /delete_user`
+`GET /messages` - Get message history
 
 ### WebSocket Route
 `GET /ws` - WebSocket endpoint for real-time chat messaging
@@ -32,6 +33,11 @@ All data is passed via JSON in the request body.
 #### /delete_user
 - `email`: string, required
 - `password`: string, required
+
+#### /messages (GET)
+- `limit`: integer, optional (default: 100, max: 500)
+  - Query parameter: `?limit=50`
+  - Returns messages in chronological order (oldest to newest)
 
 ### Response
 All responses are in JSON format.

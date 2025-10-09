@@ -11,6 +11,9 @@ use tower_http::cors::{Any, CorsLayer};
 mod user_operations;
 use user_operations::{change_password, create_user, delete_user, login_user};
 
+mod message_operations;
+use message_operations::get_messages;
+
 mod websocket_handler;
 use websocket_handler::{Tx, websocket_handler};
 
@@ -37,6 +40,7 @@ async fn main() {
         .route("/change_password", post(change_password))
         .route("/login", post(login_user))
         .route("/delete_user", post(delete_user))
+        .route("/messages", get(get_messages))
         .route("/ws", get(websocket_handler))
         .layer(cors)
         .with_state(shared_state);

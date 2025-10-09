@@ -64,6 +64,32 @@ function App() {
     setStatus(state);
   };
 
+  const fetchPreviousMessages = async (limit: number = 100) => {
+    try {
+      addSystemMessage('Loading previous messages...');
+      const response = await fetch(`http://localhost:8000/messages?limit=${limit}`);
+      const data = await response.json();
+      
+      if (data.status === 'success' && data.messages) {
+        // Add all previous messages
+        const previousMessages: ChatMessage[] = data.messages.map((msg: any) => ({
+          user_email: msg.user_email,
+          username: msg.username,
+          content: msg.content,
+          timestamp: msg.timestamp
+        }));
+        
+        setMessages(prev => [...prev, ...previousMessages]);
+        addSystemMessage(`Loaded ${previousMessages.length} previous message(s)`);
+      } else {
+        addSystemMessage('No previous messages found');
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      addSystemMessage('Failed to load previous messages');
+    }
+  };
+
   const connect = () => {
     if (!email || !password) {
       alert('Please enter your email and password');
@@ -93,6 +119,9 @@ function App() {
       if (data.status === 'authenticated') {
         updateStatus('Connected & Authenticated', 'connected');
         addSystemMessage(data.info || 'Authentication successful!');
+
+        // Fetch previous messages
+        fetchPreviousMessages(100);
 
         // send join notification after authentication
         const joinMsg = {
@@ -195,6 +224,13 @@ function App() {
           disabled={status === 'disconnected'}
         >
           Disconnect
+        </button>
+        <button 
+          onClick={() => fetchPreviousMessages(100)} 
+          disabled={status === 'disconnected'}
+          title="Load previous messages"
+        >
+          Load History
         </button>
       </div>
       
