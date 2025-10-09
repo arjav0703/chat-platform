@@ -95,9 +95,3 @@ Connect to the WebSocket endpoint at `ws://localhost:8000/ws`
 }
 ```
 
-### Features
-- Real-time bidirectional communication
-- Messages are stored in the database
-- Messages are broadcast to all connected clients
-- Automatic user lookup from database based on email
-- Timestamps in ISO 8601 format
