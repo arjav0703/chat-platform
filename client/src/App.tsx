@@ -197,6 +197,10 @@ function App() {
     async function setup_stronghold() {
       const { stronghold, client } = await initStronghold();
       console.log(stronghold, client);
+
+      insertRecord(client, 'my_key', 'my_value');
+      const value = await getRecord(client, 'my_key');
+      console.log('Retrieved value from Stronghold:', value);
     }
 
     setup_stronghold();
