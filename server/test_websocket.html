@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Chat Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        #messages {
+            border: 1px solid #ccc;
+            height: 400px;
+            overflow-y: scroll;
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+        }
+        .message-header {
+            font-weight: bold;
+            color: #333;
+        }
+        .message-time {
+            font-size: 0.8em;
+            color: #666;
+        }
+        input, button {
+            padding: 10px;
+            margin: 5px;
+        }
+        #email, #content {
+            width: 300px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Chat Test Client</h1>
+    
+    <div id="status" class="disconnected">Disconnected</div>
+    
+    <div>
+        <input type="text" id="email" placeholder="Your email (e.g., user@example.com)">
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+    </div>
+    
+    <div id="messages"></div>
+    
+    <div>
+        <input type="text" id="content" placeholder="Type your message...">
+        <button onclick="sendMessage()">Send Message</button>
+    </div>
+
+    <script>
+        let ws = null;
+        let userEmail = '';
+
+        function connect() {
+            userEmail = document.getElementById('email').value;
+            if (!userEmail) {
+                alert('Please enter your email');
+                return;
+            }
+
+            ws = new WebSocket('ws://localhost:8000/ws');
+
+            ws.onopen = function() {
+                updateStatus('Connected', true);
+                addSystemMessage('Connected to chat server');
+                
+                // Send join notification
+                const joinMsg = {
+                    type: 'join',
+                    user_email: userEmail
+                };
+                ws.send(JSON.stringify(joinMsg));
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.status === 'message' && data.message) {
+                    addMessage(data.message);
+                }
+            };
+
+            ws.onclose = function() {
+                updateStatus('Disconnected', false);
+                addSystemMessage('Disconnected from chat server');
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addSystemMessage('Error connecting to server');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                // Send leave notification
+                const leaveMsg = {
+                    type: 'leave',
+                    user_email: userEmail
+                };
+                ws.send(JSON.stringify(leaveMsg));
+                ws.close();
+            }
+        }
+
+        function sendMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to server');
+                return;
+            }
+
+            const content = document.getElementById('content').value;
+            if (!content) {
+                alert('Please enter a message');
+                return;
+            }
+
+            const message = {
+                type: 'chat',
+                user_email: userEmail,
+                content: content
+            };
+
+            ws.send(JSON.stringify(message));
+            document.getElementById('content').value = '';
+        }
+
+        function addMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            
+            const timestamp = new Date(message.timestamp).toLocaleString();
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">${message.username} (${message.user_email})</div>
+                <div>${message.content}</div>
+                <div class="message-time">${timestamp}</div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.style.backgroundColor = '#e7f3ff';
+            messageDiv.textContent = text;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(text, isConnected) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = text;
+            statusDiv.className = isConnected ? 'connected' : 'disconnected';
+        }
+
+        // Allow sending message with Enter key
+        document.getElementById('content').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

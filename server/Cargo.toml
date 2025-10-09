@@ -4,9 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = "0.6"
+axum = { version = "0.6", features = ["ws"] }
 chrono = "0.4.42"
 serde = "1.0.228"
+serde_json = "1.0"
 sha2 = "0.10.9"
 sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "postgres", "macros"] }
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+tower = "0.4"
+tower-http = { version = "0.4", features = ["cors"] }

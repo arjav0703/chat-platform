@@ -34,12 +34,13 @@ async fn check_user_exists(pool: &Pool<Postgres>, email: &str) -> bool {
 }
 
 pub async fn create_user(
-    State(pool): State<Arc<Pool<Postgres>>>,
+    State(state): State<Arc<(Pool<Postgres>, tokio::sync::broadcast::Sender<crate::websocket_handler::ChatMessage>)>>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Json<ApiResponse> {
+    let pool = &state.0;
     let password_hash = hash_password(&payload.password);
 
-    if check_user_exists(&pool, &payload.email).await {
+    if check_user_exists(pool, &payload.email).await {
         return Json(ApiResponse {
             status: "error".to_string(),
             message: "User with this email already exists".to_string(),
@@ -51,7 +52,7 @@ pub async fn create_user(
             .bind(payload.username)
             .bind(payload.email)
             .bind(password_hash)
-            .execute(&*pool)
+            .execute(pool)
             .await;
 
     match query_result {
@@ -77,10 +78,11 @@ pub struct ChangePasswordRequest {
 }
 
 pub async fn change_password(
-    State(pool): State<Arc<Pool<Postgres>>>,
+    State(state): State<Arc<(Pool<Postgres>, tokio::sync::broadcast::Sender<crate::websocket_handler::ChatMessage>)>>,
     Json(payload): Json<ChangePasswordRequest>,
 ) -> Json<ApiResponse> {
-    if !authenticate_user(&pool, &payload.email, &payload.old_password).await {
+    let pool = &state.0;
+    if !authenticate_user(pool, &payload.email, &payload.old_password).await {
         return Json(ApiResponse {
             status: "error".to_string(),
             message: "Invalid email or password".to_string(),
@@ -92,7 +94,7 @@ pub async fn change_password(
     let query_result = sqlx::query("UPDATE users SET password_hash = $1 WHERE email = $2")
         .bind(password_hash)
         .bind(payload.email)
-        .execute(&*pool)
+        .execute(pool)
         .await;
 
     match query_result {
@@ -141,10 +143,11 @@ async fn authenticate_user(pool: &Pool<Postgres>, email: &str, password: &str) -
 }
 
 pub async fn delete_user(
-    State(pool): State<Arc<Pool<Postgres>>>,
+    State(state): State<Arc<(Pool<Postgres>, tokio::sync::broadcast::Sender<crate::websocket_handler::ChatMessage>)>>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Json<ApiResponse> {
-    if !authenticate_user(&pool, &payload.email, &payload.password).await {
+    let pool = &state.0;
+    if !authenticate_user(pool, &payload.email, &payload.password).await {
         return Json(ApiResponse {
             status: "error".to_string(),
             message: "Invalid email or password".to_string(),
@@ -153,7 +156,7 @@ pub async fn delete_user(
 
     let query_result = sqlx::query("DELETE FROM users WHERE email = $1")
         .bind(payload.email)
-        .execute(&*pool)
+        .execute(pool)
         .await;
 
     match query_result {
@@ -181,10 +184,11 @@ pub async fn delete_user(
 }
 
 pub async fn login_user(
-    State(pool): State<Arc<Pool<Postgres>>>,
+    State(state): State<Arc<(Pool<Postgres>, tokio::sync::broadcast::Sender<crate::websocket_handler::ChatMessage>)>>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Json<ApiResponse> {
-    if authenticate_user(&pool, &payload.email, &payload.password).await {
+    let pool = &state.0;
+    if authenticate_user(pool, &payload.email, &payload.password).await {
         Json(ApiResponse {
             status: "success".to_string(),
             message: "Login successful".to_string(),

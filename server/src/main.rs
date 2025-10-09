@@ -5,18 +5,30 @@ use axum::{
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::broadcast;
+use tower_http::cors::{Any, CorsLayer};
 
 mod user_operations;
 use user_operations::{change_password, create_user, delete_user, login_user};
 
-mod message_operations;
+mod websocket_handler;
+use websocket_handler::{Tx, websocket_handler};
 
 #[tokio::main]
 async fn main() {
     let pool = connect_to_database().await;
-    let shared_state = Arc::new(pool);
+
+    // broadcast channel for WebSocket messages
+    let (tx, _rx): (Tx, _) = broadcast::channel(100);
+
+    let shared_state = Arc::new((pool, tx));
 
     println!("Starting the http server...");
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     let app = Router::new()
         .route("/", get(hello_world))
@@ -25,10 +37,13 @@ async fn main() {
         .route("/change_password", post(change_password))
         .route("/login", post(login_user))
         .route("/delete_user", post(delete_user))
+        .route("/ws", get(websocket_handler))
+        .layer(cors)
         .with_state(shared_state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
     println!("Server running at http://{}", addr);
+    println!("WebSocket endpoint available at ws://{}/ws", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
