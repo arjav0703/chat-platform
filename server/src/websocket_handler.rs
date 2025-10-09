@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -22,12 +23,19 @@ pub struct ChatMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum WsMessage {
+    #[serde(rename = "auth")]
+    Auth { 
+        email: String, 
+        password: String 
+    },
     #[serde(rename = "chat")]
-    Chat { user_email: String, content: String },
+    Chat { 
+        content: String 
+    },
     #[serde(rename = "join")]
-    Join { user_email: String },
+    Join,
     #[serde(rename = "leave")]
-    Leave { user_email: String },
+    Leave,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +43,13 @@ pub struct WsResponse {
     pub status: String,
     pub message: Option<ChatMessage>,
     pub info: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AuthenticatedUser {
+    email: String,
+    username: String,
+    user_id: i32,
 }
 
 pub type Tx = broadcast::Sender<ChatMessage>;
@@ -53,6 +68,66 @@ pub async fn websocket_handler(
 
 async fn websocket_connection(stream: WebSocket, pool: Pool<Postgres>, tx: Tx) {
     let (mut sender, mut receiver) = stream.split();
+    
+    // Wait for authentication message first
+    let authenticated_user = match receiver.next().await {
+        Some(Ok(Message::Text(text))) => {
+            match serde_json::from_str::<WsMessage>(&text) {
+                Ok(WsMessage::Auth { email, password }) => {
+                    match authenticate_user(&pool, &email, &password).await {
+                        Some(user) => {
+                            // Send success response
+                            let response = WsResponse {
+                                status: "authenticated".to_string(),
+                                message: None,
+                                info: Some(format!("Welcome, {}!", user.username)),
+                            };
+                            if let Ok(json) = serde_json::to_string(&response) {
+                                let _ = sender.send(Message::Text(json)).await;
+                            }
+                            println!("User {} ({}) authenticated", user.username, user.email);
+                            Some(user)
+                        }
+                        None => {
+                            // Send error response
+                            let response = WsResponse {
+                                status: "error".to_string(),
+                                message: None,
+                                info: Some("Authentication failed: Invalid email or password".to_string()),
+                            };
+                            if let Ok(json) = serde_json::to_string(&response) {
+                                let _ = sender.send(Message::Text(json)).await;
+                            }
+                            None
+                        }
+                    }
+                }
+                _ => {
+                    // Send error response
+                    let response = WsResponse {
+                        status: "error".to_string(),
+                        message: None,
+                        info: Some("First message must be authentication".to_string()),
+                    };
+                    if let Ok(json) = serde_json::to_string(&response) {
+                        let _ = sender.send(Message::Text(json)).await;
+                    }
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+
+    // If authentication failed, close the connection
+    let user = match authenticated_user {
+        Some(u) => u,
+        None => {
+            let _ = sender.close().await;
+            return;
+        }
+    };
+
     let mut rx = tx.subscribe();
 
     // Task to receive messages from the broadcast channel and send to the client
@@ -74,38 +149,35 @@ async fn websocket_connection(stream: WebSocket, pool: Pool<Postgres>, tx: Tx) {
 
     // Task to receive messages from the client and broadcast to others
     let tx_clone = tx.clone();
+    let user_clone = user.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
             // Parse the incoming message
             match serde_json::from_str::<WsMessage>(&text) {
                 Ok(ws_msg) => match ws_msg {
-                    WsMessage::Chat {
-                        user_email,
-                        content,
-                    } => {
-                        // Get username from database
-                        let username = get_username(&pool, &user_email).await;
-
+                    WsMessage::Chat { content } => {
                         // Store message in database
-                        if let Some(user_id) = get_user_id(&pool, &user_email).await {
-                            let _ = store_message(&pool, user_id, &content).await;
-                        }
+                        let _ = store_message(&pool, user_clone.user_id, &content).await;
 
                         // Broadcast message to all connected clients
                         let chat_message = ChatMessage {
-                            user_email: user_email.clone(),
-                            username: username.unwrap_or_else(|| "Unknown".to_string()),
+                            user_email: user_clone.email.clone(),
+                            username: user_clone.username.clone(),
                             content,
                             timestamp: chrono::Utc::now().to_rfc3339(),
                         };
 
                         let _ = tx_clone.send(chat_message);
                     }
-                    WsMessage::Join { user_email } => {
-                        println!("User {} joined the chat", user_email);
+                    WsMessage::Join => {
+                        println!("User {} joined the chat", user_clone.email);
                     }
-                    WsMessage::Leave { user_email } => {
-                        println!("User {} left the chat", user_email);
+                    WsMessage::Leave => {
+                        println!("User {} left the chat", user_clone.email);
+                    }
+                    WsMessage::Auth { .. } => {
+                        // Ignore subsequent auth messages
+                        eprintln!("Received auth message after authentication");
                     }
                 },
                 Err(e) => {
@@ -120,26 +192,38 @@ async fn websocket_connection(stream: WebSocket, pool: Pool<Postgres>, tx: Tx) {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),
     };
+    
+    println!("User {} disconnected", user.email);
 }
 
-/// Gets username from DB
-async fn get_username(pool: &Pool<Postgres>, email: &str) -> Option<String> {
-    sqlx::query_scalar("SELECT name FROM users WHERE email = $1")
-        .bind(email)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
+/// Authenticates a user and returns their information if successful
+async fn authenticate_user(pool: &Pool<Postgres>, email: &str, password: &str) -> Option<AuthenticatedUser> {
+    let password_hash = hash_password(password);
+    
+    let result = sqlx::query_as::<_, (i32, String, String)>(
+        "SELECT id, name, email FROM users WHERE email = $1 AND password_hash = $2"
+    )
+    .bind(email)
+    .bind(&password_hash)
+    .fetch_optional(pool)
+    .await;
+
+    match result {
+        Ok(Some((user_id, username, email))) => Some(AuthenticatedUser {
+            email,
+            username,
+            user_id,
+        }),
+        _ => None,
+    }
 }
 
-/// Gets user name from DB
-async fn get_user_id(pool: &Pool<Postgres>, email: &str) -> Option<i32> {
-    sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
-        .bind(email)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
+/// Hash password using SHA256
+fn hash_password(password: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    let result = hasher.finalize();
+    format!("{:x}", result)
 }
 
 /// Stores message in DB

@@ -71,6 +71,7 @@
     
     <div>
         <input type="text" id="email" placeholder="Your email (e.g., user@example.com)">
+        <input type="password" id="password" placeholder="Your password">
         <button onclick="connect()">Connect</button>
         <button onclick="disconnect()">Disconnect</button>
     </div>
@@ -88,28 +89,45 @@
 
         function connect() {
             userEmail = document.getElementById('email').value;
-            if (!userEmail) {
-                alert('Please enter your email');
+            const password = document.getElementById('password').value;
+            
+            if (!userEmail || !password) {
+                alert('Please enter your email and password');
                 return;
             }
 
             ws = new WebSocket('ws://localhost:8000/ws');
 
             ws.onopen = function() {
-                updateStatus('Connected', true);
-                addSystemMessage('Connected to chat server');
+                updateStatus('Authenticating...', false);
+                addSystemMessage('Connected to chat server, authenticating...');
                 
-                // Send join notification
-                const joinMsg = {
-                    type: 'join',
-                    user_email: userEmail
+                // Send authentication message first
+                const authMsg = {
+                    type: 'auth',
+                    email: userEmail,
+                    password: password
                 };
-                ws.send(JSON.stringify(joinMsg));
+                ws.send(JSON.stringify(authMsg));
             };
 
             ws.onmessage = function(event) {
                 const data = JSON.parse(event.data);
-                if (data.status === 'message' && data.message) {
+                
+                if (data.status === 'authenticated') {
+                    updateStatus('Connected & Authenticated', true);
+                    addSystemMessage(data.info || 'Authentication successful!');
+                    
+                    // Send join notification after authentication
+                    const joinMsg = {
+                        type: 'join'
+                    };
+                    ws.send(JSON.stringify(joinMsg));
+                } else if (data.status === 'error') {
+                    updateStatus('Error: ' + (data.info || 'Unknown error'), false);
+                    addSystemMessage('Error: ' + (data.info || 'Unknown error'));
+                    ws.close();
+                } else if (data.status === 'message' && data.message) {
                     addMessage(data.message);
                 }
             };
@@ -129,8 +147,7 @@
             if (ws) {
                 // Send leave notification
                 const leaveMsg = {
-                    type: 'leave',
-                    user_email: userEmail
+                    type: 'leave'
                 };
                 ws.send(JSON.stringify(leaveMsg));
                 ws.close();
@@ -151,7 +168,6 @@
 
             const message = {
                 type: 'chat',
-                user_email: userEmail,
                 content: content
             };
 
