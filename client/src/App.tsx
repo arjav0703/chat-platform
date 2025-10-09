@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import "./App.css";
+import { Client, Stronghold } from '@tauri-apps/plugin-stronghold';
+import { appDataDir } from '@tauri-apps/api/path';
 
 interface ChatMessage {
   user_email: string;
@@ -29,7 +31,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [statusText, setStatusText] = useState('Disconnected');
-  
+
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -69,7 +71,7 @@ function App() {
       addSystemMessage('Loading previous messages...');
       const response = await fetch(`http://localhost:8000/messages?limit=${limit}`);
       const data = await response.json();
-      
+
       if (data.status === 'success' && data.messages) {
         // Add all previous messages
         const previousMessages: ChatMessage[] = data.messages.map((msg: any) => ({
@@ -78,7 +80,7 @@ function App() {
           content: msg.content,
           timestamp: msg.timestamp
         }));
-        
+
         setMessages(prev => [...prev, ...previousMessages]);
         addSystemMessage(`Loaded ${previousMessages.length} previous message(s)`);
       } else {
@@ -103,7 +105,7 @@ function App() {
     ws.onopen = () => {
       updateStatus('Authenticating...', 'connecting');
       addSystemMessage('Connected to chat server, authenticating...');
-      
+
       // send authentication message first
       const authMsg = {
         type: 'auth',
@@ -115,7 +117,7 @@ function App() {
 
     ws.onmessage = (event) => {
       const data: WsResponse = JSON.parse(event.data);
-      
+
       if (data.status === 'authenticated') {
         updateStatus('Connected & Authenticated', 'connected');
         addSystemMessage(data.info || 'Authentication successful!');
@@ -191,13 +193,23 @@ function App() {
     return 'type' in msg && msg.type === 'system';
   };
 
+  useEffect(() => {
+    async function setup_stronghold() {
+      const { stronghold, client } = await initStronghold();
+      console.log(stronghold, client);
+    }
+
+    setup_stronghold();
+  }, []);
+
+
   return (
     <div className="chat-container">
       <h1>Chat</h1>
       <div className={`status status-${status}`}>
         {statusText}
       </div>
-      
+
       <div className="auth-controls">
         <input
           type="text"
@@ -213,27 +225,27 @@ function App() {
           onChange={(e) => setPassword(e.target.value)}
           disabled={status === 'connected'}
         />
-        <button 
-          onClick={connect} 
+        <button
+          onClick={connect}
           disabled={status !== 'disconnected'}
         >
           Connect
         </button>
-        <button 
-          onClick={disconnect} 
+        <button
+          onClick={disconnect}
           disabled={status === 'disconnected'}
         >
           Disconnect
         </button>
-        <button 
-          onClick={() => fetchPreviousMessages(100)} 
+        <button
+          onClick={() => fetchPreviousMessages(100)}
           disabled={status === 'disconnected'}
           title="Load previous messages"
         >
           Load History
         </button>
       </div>
-      
+
       <div className="messages-container">
         {messages.map((msg, index) => {
           if (isSystemMessage(msg)) {
@@ -257,7 +269,7 @@ function App() {
         })}
         <div ref={messagesEndRef} />
       </div>
-      
+
       <div className="message-input">
         <input
           type="text"
@@ -267,8 +279,8 @@ function App() {
           onKeyPress={handleKeyPress}
           disabled={status !== 'connected'}
         />
-        <button 
-          onClick={sendMessage} 
+        <button
+          onClick={sendMessage}
           disabled={status !== 'connected'}
         >
           Send Message
@@ -279,3 +291,36 @@ function App() {
 }
 
 export default App;
+
+const initStronghold = async () => {
+  const vaultPath = `${await appDataDir()}/vault.hold`;
+  const vaultPassword = 'vault password';
+  const stronghold = await Stronghold.load(vaultPath, vaultPassword);
+
+  let client: Client;
+  const clientName = 'name your client';
+  try {
+    client = await stronghold.loadClient(clientName);
+  } catch {
+    client = await stronghold.createClient(clientName);
+  }
+
+  return {
+    stronghold,
+    client,
+  };
+};
+
+async function insertRecord(store: any, key: string, value: string) {
+  const data = Array.from(new TextEncoder().encode(value));
+  await store.insert(key, data);
+}
+
+// Read a record from store
+async function getRecord(store: any, key: string): Promise<string> {
+  const data = await store.get(key);
+  return new TextDecoder().decode(new Uint8Array(data));
+}
+
+
+
