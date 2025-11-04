@@ -13,9 +13,11 @@ git clone https://github.com/arjav0703/chat-platform.git && cd chat-platform
 cd server
 cargo run
 ```
-
-4. Run the client:
+4. Make sure pnpm is installed. If not, visit [here](https://pnpm.io/installation) to install pnpm. Then install Tauri prerequisites:
+```bash
+5. Run the client:
 ```bash
 cd client 
-cargo run
+pnpm install
+pnpm tauri dev
 ```
